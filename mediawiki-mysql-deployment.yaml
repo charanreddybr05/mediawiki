@@ -1,0 +1,87 @@
+kind: Deployment
+apiVersion: apps/v1beta1
+metadata:
+  name: mediawiki
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: mediawiki
+    spec:
+      containers:
+      - name: mediawiki
+        image: mediawiki
+        ports:
+        - containerPort: 80
+---
+#apiVersion: v1
+#kind: Service
+#metadata:
+#  name: mysql
+#spec:
+#  ports:
+#  - port: 3306
+#  selector:
+#    app: mysql
+#  clusterIP: None
+kind: Service
+apiVersion: v1
+metadata:
+  name: mysql
+spec:
+  selector:
+    app: mysql
+  type: LoadBalancer
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+      nodePort: 30002
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: mediawiki
+spec:
+  selector:
+    app: mediawiki
+  type: LoadBalancer
+  ports:
+    - name: mediawiki
+      port: 8080
+      targetPort: 80
+      nodePort: 30001
+---
+apiVersion: apps/v1 # for versions before 1.9.0 use apps/v1beta2
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - image: mysql:5.6
+        name: mysql
+        env:
+          # Use secret in real usage
+        - name: MYSQL_ROOT_PASSWORD
+          value: wikidb
+        ports:
+        - containerPort: 3306
+          name: mysql
+        volumeMounts:
+        - name: mysql-persistent-storage
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-persistent-storage
+        persistentVolumeClaim:
+          claimName: mysql-pv-claim
