@@ -44,4 +44,5 @@ ENV MEDIAWIKI_SHA512 ee49649cc37d0a7d45a7c6d90c822c2a595df290be2b5bf085affbec331
 #	&& tar -xz --strip-components=1 -f mediawiki.tar.gz \
 #	&& rm mediawiki.tar.gz \
 #	&& chown -R www-data:www-data extensions skins cache images
-RUN cp mediawiki/* /var/www/data
+#RUN cp mediawiki/* /var/www/data
+COPY mediawiki/* /var/www/data
