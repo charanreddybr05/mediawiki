@@ -29,8 +29,9 @@ pipeline {
 	stage('') {
 		steps{
 			script {
-				sh('sed -i 's/VERSION/$BUILD_NUMBER/g')
-				kubectl create -f mediawiki-mysql-deployment.yaml
+				//sh('sed -i 's/VERSION/$BUILD_NUMBER/g')
+				//kubectl create -f mediawiki-mysql-deployment.yaml
+				echo('Hello')
 			}
 		}
 	}
