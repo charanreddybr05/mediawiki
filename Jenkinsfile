@@ -5,7 +5,7 @@ pipeline {
   }
   agent any
   stages {
-	stage(‘Cloning Git’) {
+	stage('Cloning Git') {
 		steps {
 			git ‘https://github.com/charanreddybr05/mediawiki.git'
 			}
@@ -17,7 +17,7 @@ pipeline {
         }
       }
     }
-	stage(‘Deploy Image’) {
+	stage('Deploy Image') {
 	  steps{
 		script {
 			docker.withRegistry( ‘’, registryCredential ) {
@@ -25,6 +25,14 @@ pipeline {
 			}
 		}
 	}
+	}
+	stage('') {
+		steps{
+			script {
+				sh('sed -i 's/VERSION/$BUILD_NUMBER/g')
+				kubectl create -f mediawiki-mysql-deployment.yaml
+			}
+		}
 	}
   }
 }
