@@ -33,14 +33,30 @@ pipeline {
 		}
 	}
 	}
-	stage('') {
-		steps{
-			script {
-				//sh('sed -i 's/VERSION/$BUILD_NUMBER/g')
-				//kubectl create -f mediawiki-mysql-deployment.yaml
-				echo('Hello')
-			}
-		}
-	}
+	agent {
+    kubernetes {
+      label 'mediawiki'
+      defaultContainer 'mediawiki'
+      yaml """
+	apiVersion: v1
+	kind: Pod
+	metadata:
+	labels:
+		some-label: mediawiki
+	spec:
+	containers:
+	- name: mediawiki
+	  image: mediawiki
+      command:
+      - cat
+      tty: true
+    - name: mediawiki
+      image: mediawiki
+      command:
+      - cat
+      tty: true
+  """
+    }
+  }
   }
 }
