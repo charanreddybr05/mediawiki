@@ -13,7 +13,7 @@ pipeline {
 	stage('Installing Docker') {
       steps{
         script {
-          apt-get install docker && service docker start
+          sh('apt-get install docker && service docker start')
         }
       }
     }
