@@ -10,6 +10,13 @@ pipeline {
 			git 'https://github.com/charanreddybr05/mediawiki.git'
 			}
 		}
+	stage('Installing Docker') {
+      steps{
+        script {
+          apt-get install docker && service docker start
+        }
+      }
+    }
     stage('Building image') {
       steps{
         script {
