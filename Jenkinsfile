@@ -7,7 +7,7 @@ pipeline {
   stages {
 	stage('Cloning Git') {
 		steps {
-			git ‘https://github.com/charanreddybr05/mediawiki.git'
+			git 'https://github.com/charanreddybr05/mediawiki.git'
 			}
 		}
     stage('Building image') {
