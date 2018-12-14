@@ -10,9 +10,10 @@ pipeline {
 			git 'https://github.com/charanreddybr05/mediawiki.git'
 			}
 		}
-    stage('Building image') {
+    stage('Creating Secret and Building image') {
       steps{
         script {
+		  kubectl create secret generic db-user-pass --from-file=./username.txt --from-file=./password.txt
           docker.build registry + ":$BUILD_NUMBER"
         }
       }
