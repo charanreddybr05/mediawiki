@@ -1,0 +1,215 @@
+def createNamespace (namespace) {
+    echo "Creating namespace ${namespace} if needed"
+
+    sh "[ ! -z \"\$(kubectl get ns ${namespace} -o name 2>/dev/null)\" ] || kubectl create ns ${namespace}"
+}
+
+/*Helm install*/
+def helmInstall (namespace, release) {
+    echo "Installing ${release} in ${namespace}"
+
+    script {
+        release = "${release}-${namespace}"
+        sh "helm repo add helm ${HELM_REPO}; helm repo update"
+        sh """
+            helm upgrade --install --namespace ${namespace} ${release} \
+                --set imagePullSecrets=${IMG_PULL_SECRET} \
+                --set image.repository=${DOCKER_REG}/${IMAGE_NAME},image.tag=${DOCKER_TAG} helm/acme
+        """
+        sh "sleep 5"
+    }
+}
+
+pipeline {
+
+    options {
+        // Build auto timeout
+        timeout(time: 60, unit: 'MINUTES')
+    }
+    environment {
+        IMAGE_NAME = 'mediawiki'
+        DEPLOY_PROD = false
+    }
+
+    parameters {
+        string (name: 'GIT_BRANCH',           defaultValue: 'release',  description: 'Git branch to build')
+        booleanParam (name: 'DEPLOY_TO_PROD', defaultValue: false,     description: 'If build and tests are good, proceed and deploy to production without manual approval')
+
+    agent { node { label 'release' } }
+    stages {
+
+        stage('Git clone and setup') {
+            steps {
+                  git branch: "release",
+                        credentialsId: 'dockerhub',
+                        url: 'https://github.com/charanreddybr05/mediawiki.git'
+
+                // Validate kubectl
+                sh "kubectl cluster-info"
+
+                // Init helm client
+                sh "helm init"
+
+                // Define a unique name for the tests container and helm release
+                script {
+                    branch = GIT_BRANCH.replaceAll('/', '-').replaceAll('\\*', '-')
+                    ID = "${IMAGE_NAME}-${DOCKER_TAG}-${branch}"
+
+                    echo "Global ID set to ${ID}"
+                }
+            }
+        }
+
+
+        // Run the 3 tests on the currently running ACME Docker container
+        stage('Local tests') {
+            parallel {
+                stage('Curl http_code') {
+                    steps {
+                        curlRun ("http://${host_ip}", 'http_code')
+                    }
+                }
+                stage('Curl total_time') {
+                    steps {
+                        curlRun ("http://${host_ip}", 'total_time')
+                    }
+                }
+                stage('Curl size_download') {
+                    steps {
+                        curlRun ("http://${host_ip}", 'size_download')
+                    }
+                }
+            }
+        }
+
+        stage('Publish Docker and Helm') {
+            steps {
+                echo "Stop and remove container"
+                sh "docker stop ${ID}"
+
+                echo "Pushing ${DOCKER_REG}/${IMAGE_NAME}:${DOCKER_TAG} image to registry"
+                sh "${WORKSPACE}/build.sh --push --registry ${DOCKER_REG} --tag ${DOCKER_TAG} --docker_usr ${DOCKER_USR} --docker_psw ${DOCKER_PSW}"
+
+                echo "Packing helm chart"
+                sh "${WORKSPACE}/build.sh --pack_helm --push_helm --helm_repo ${HELM_REPO} --helm_usr ${HELM_USR} --helm_psw ${HELM_PSW}"
+            }
+        }
+
+        stage('Deploy to dev') {
+            steps {
+                script {
+                    namespace = 'development'
+
+                    echo "Deploying application ${ID} to ${namespace} namespace"
+                    createNamespace (namespace)
+
+                    // Remove release if exists
+                    helmDelete (namespace, "${ID}")
+
+                    // Deploy with helm
+                    echo "Deploying"
+                    helmInstall(namespace, "${ID}")
+                }
+            }
+        }
+
+        // Run the 3 tests on the deployed Kubernetes pod and service
+        stage('Dev tests') {
+            parallel {
+                stage('Curl http_code') {
+                    steps {
+                        curlTest (namespace, 'http_code')
+                    }
+                }
+                stage('Curl total_time') {
+                    steps {
+                        curlTest (namespace, 'time_total')
+                    }
+                }
+                stage('Curl size_download') {
+                    steps {
+                        curlTest (namespace, 'size_download')
+                    }
+                }
+            }
+        }
+
+        stage('Cleanup dev') {
+            steps {
+                script {
+                    // Remove release if exists
+                    helmDelete (namespace, "${ID}")
+                }
+            }
+        }
+
+        stage('Deploy to staging') {
+            steps {
+                script {
+                    namespace = 'staging'
+
+                    echo "Deploying application ${IMAGE_NAME}:${DOCKER_TAG} to ${namespace} namespace"
+                    createNamespace (namespace)
+
+                    // Remove release if exists
+                    helmDelete (namespace, "${ID}")
+
+                    // Deploy with helm
+                    echo "Deploying"
+                    helmInstall (namespace, "${ID}")
+                }
+            }
+        }
+
+        stage('Cleanup staging') {
+            steps {
+                script {
+                    helmDelete (namespace, "${ID}")
+                }
+            }
+        }
+        stage('Go for Production?') {
+            when {
+                allOf {
+                    environment name: 'GIT_BRANCH', value: 'release'
+                    environment name: 'DEPLOY_TO_PROD', value: 'false'
+                }
+            }
+
+            steps {
+                // Prevent any older builds from deploying to production
+                milestone(1)
+                input 'Proceed and deploy to Production?'
+                milestone(2)
+
+                script {
+                    DEPLOY_PROD = true
+                }
+            }
+        }
+
+        stage('Deploy to Production') {
+            when {
+                anyOf {
+                    expression { DEPLOY_PROD == true }
+                    environment name: 'DEPLOY_TO_PROD', value: 'true'
+                }
+            }
+
+            steps {
+                script {
+                    DEPLOY_PROD = true
+                    namespace = 'production'
+
+                    echo "Deploying application ${IMAGE_NAME}:${DOCKER_TAG} to ${namespace} namespace"
+                    createNamespace (namespace)
+
+                    // Deploy with helm
+                    echo "Deploying"
+                    helmInstall (namespace, "${ID}")
+                }
+            }
+        }
+
+    }
+}
